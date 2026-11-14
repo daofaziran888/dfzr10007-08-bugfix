@@ -24,20 +24,11 @@ const statuses = [
   "已发布",
   "已归档"
 ]
-const stats = [
-  {
-    "label": "协作看板总数",
-    "value": 0
-  },
-  {
-    "label": "协作中看板",
-    "value": 0
-  },
-  {
-    "label": "已发布看板",
-    "value": 0
-  }
-]
+const ACTION_ENABLED: Record<string, string[]> = {
+  发布看板: ["协作中"],
+  归档看板: ["协作中", "已发布"],
+  删除看板: ["已归档"]
+}
 
 type Row = Record<string, string | number | null>
 
@@ -75,14 +66,22 @@ export default function CollabView() {
         method: 'POST',
         body: JSON.stringify({ action }),
       })
-      if (!response.ok) {
-        throw new Error('看板协作管理动作未生效，请稍后重试')
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || (payload && payload.ok === false)) {
+        throw new Error(payload?.message ?? '看板协作管理动作未生效，请稍后重试')
       }
       await reload()
     } catch (error) {
+      // 动作未生效时保留当前列表，协作成员名册不丢
       setErrorMessage(error instanceof Error ? error.message : '看板协作管理操作失败')
     }
   }
+
+  const stats = [
+    { label: '协作看板总数', value: total },
+    { label: '协作中看板', value: rows.filter((row) => row.status === '协作中').length },
+    { label: '已发布看板', value: rows.filter((row) => row.status === '已发布').length },
+  ]
 
   return (
     <section className="page" data-module="collab">
@@ -137,11 +136,21 @@ export default function CollabView() {
             <tr key={String(row.id)}>
               {columns.map((column) => <td key={column}>{row[column] ?? '—'}</td>)}
               <td className="row-actions">
-                {actions.map((action) => (
-                  <button key={action} className="link" type="button" onClick={() => void runAction(action, row)}>
-                    {action}
-                  </button>
-                ))}
+                {actions.map((action) => {
+                  const enabled = (ACTION_ENABLED[action] ?? []).includes(String(row.status ?? ''))
+                  return (
+                    <button
+                      key={action}
+                      className="link"
+                      type="button"
+                      disabled={!enabled}
+                      title={enabled ? action : `当前状态「${row.status ?? '—'}」不可${action}`}
+                      onClick={() => void runAction(action, row)}
+                    >
+                      {action}
+                    </button>
+                  )
+                })}
               </td>
             </tr>
           ))}
